@@ -1,26 +1,3 @@
-'''
-    Kodi video capturer for Hyperion
-	
-	Copyright (c) 2013-1016 Hyperion Team
-
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-
-	The above copyright notice and this permission notice shall be included in
-	all copies or substantial portions of the Software.
-
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-	THE SOFTWARE.
-'''
 
 import xbmc
 import xbmcaddon
@@ -31,30 +8,80 @@ import os
 __addon__      = xbmcaddon.Addon()
 __cwd__        = __addon__.getAddonInfo('path')
 sys.path.append(xbmc.translatePath(os.path.join(__cwd__, 'resources', 'lib')))
-		
-from settings import Settings
-from state import DisconnectedState
+
 from hyperion.Hyperion import Hyperion
 
-if  __name__ == "__main__":
-	# read settings
-	settings = Settings()
+HYPERION_IP = '127.0.0.1'
+HYPERION_PORT = 19445
+HYPERION_WIDTH = 64
+HYPERION_HEIGHT = 64
+HYPERION_PRIORITY = 800
 
-	# initialize the state
-	state = DisconnectedState(settings)
-	
-	# start looping
-	while not settings.abort:
-		# execute the current state
-		next_state = state.execute()
-		
-		# delete the old state if necessary
-		if state != next_state:
-			del state
-			
-		# advance to the next state
-		state = next_state
-		
-	# clean up the state closing the connection if present
-	del state
-	del settings
+enabled = False
+
+
+def log(msg):
+    '''Write a debug message to the Kodi log
+    '''
+    addon = xbmcaddon.Addon()
+    xbmc.log("### [%s] - %s" % (addon.getAddonInfo('name'),msg,), level=xbmc.LOGERROR)
+
+def notify(msg):
+    '''Show a notification in Kodi
+    '''
+    addon = xbmcaddon.Addon()
+    xbmcgui.Dialog().notification(addon.getAddonInfo('name'), msg, addon.getAddonInfo('icon'))
+
+def load_settings():
+    global enabled
+    addon = xbmcaddon.Addon()
+    enabled = addon.getSetting("hyperion_enable").lower() == 'true'
+
+class MyMonitor (xbmc.Monitor):
+    def __init__(self):
+        xbmc.Monitor.__init__(self)
+
+    def onSettingsChanged(self):
+        load_settings()
+
+
+if  __name__ == "__main__":
+    load_settings()
+
+    monitor = MyMonitor()
+    player = xbmc.Player()
+
+    capture = xbmc.RenderCapture()
+    capture.capture(HYPERION_WIDTH, HYPERION_HEIGHT)
+    hyperion = Hyperion(HYPERION_IP, HYPERION_PORT)
+
+    while not monitor.abortRequested():
+        try:
+            if enabled and player.isPlayingVideo():
+                data = capture.getImage()
+                if len(data) == 0:
+                    capture.capture(HYPERION_WIDTH, HYPERION_HEIGHT)
+                    hyperion.clear(HYPERION_PRIORITY)
+                    continue
+
+                if capture.getImageFormat() == 'ARGB':
+                    del data[0::4]
+                elif capture.getImageFormat() == 'BGRA':
+                    del data[3::4]
+                    data[0::3], data[2::3] = data[2::3], data[0::3]
+
+                hyperion.sendImage(capture.getWidth(), capture.getHeight(), str(data), HYPERION_PRIORITY, -1)
+            else:
+                hyperion.clear(HYPERION_PRIORITY)
+                monitor.waitForAbort(1.0)
+        except Exception as e:
+            notify('Something went wrong')
+            log(e)
+            hyperion.clear(HYPERION_PRIORITY)
+            monitor.waitForAbort(30.0)
+            if not monitor.abortRequested():
+                capture = xbmc.RenderCapture()
+                capture.capture(HYPERION_WIDTH, HYPERION_HEIGHT)
+                hyperion = Hyperion(HYPERION_IP, HYPERION_PORT)
+
+        monitor.waitForAbort(0.010)

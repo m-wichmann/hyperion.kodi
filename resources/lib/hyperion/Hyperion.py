@@ -33,14 +33,14 @@ from message_pb2 import ClearRequest
 
 class Hyperion(object):
     '''Hyperion connection class
-    
+
     A Hyperion object will connect to the Hyperion server and provide
     easy to use functions to send requests
-    
+
     Note that the function will block until a reply has been received
     from the Hyperion server (or the call has timed out)
     '''
-    
+
     def __init__(self, server, port):
         '''Constructor
         - server : server address of Hyperion
@@ -64,7 +64,7 @@ class Hyperion(object):
         - color    : integer value with the color as 0x00RRGGBB
         - priority : the priority channel to use
         - duration : duration the leds should be set
-        ''' 
+        '''
         # create the request
         request = HyperionRequest()
         request.command = HyperionRequest.COLOR
@@ -73,9 +73,9 @@ class Hyperion(object):
         colorRequest.priority = priority
         colorRequest.duration = duration
 
-        # send the message 
+        # send the message
         self.__sendMessage(request)
-        
+
     def sendImage(self, width, height, data, priority, duration = -1):
         '''Send an image to Hyperion
         - width    : width of the image
@@ -83,7 +83,7 @@ class Hyperion(object):
         - data     : image data (byte string containing 0xRRGGBB pixel values)
         - priority : the priority channel to use
         - duration : duration the leds should be set
-        ''' 
+        '''
         # create the request
         request = HyperionRequest()
         request.command = HyperionRequest.IMAGE
@@ -94,7 +94,7 @@ class Hyperion(object):
         imageRequest.priority = priority
         imageRequest.duration = duration
 
-        # send the message 
+        # send the message
         self.__sendMessage(request)
         
     def clear(self, priority):
@@ -107,9 +107,9 @@ class Hyperion(object):
         clearRequest = request.Extensions[ClearRequest.clearRequest]
         clearRequest.priority = priority
 
-        # send the message 
+        # send the message
         self.__sendMessage(request)
-    
+
     def clearall(self):
         '''Clear all active priority channels
         '''
@@ -117,11 +117,11 @@ class Hyperion(object):
         request = HyperionRequest()
         request.command = HyperionRequest.CLEARALL
 
-        # send the message 
+        # send the message
         self.__sendMessage(request)
-        
+
     def __sendMessage(self, message):
-        '''Send the given proto message to Hyperion. A RuntimeError will 
+        '''Send the given proto message to Hyperion. A RuntimeError will
         be raised if the reply contains an error
         - message : proto request to send
         '''
@@ -132,14 +132,13 @@ class Hyperion(object):
         binarySize = struct.pack(">I", len(binaryRequest))
         self.__socket.sendall(binarySize)
         self.__socket.sendall(binaryRequest);
-        
+
         # receive a reply from Hyperion
         size = struct.unpack(">I", self.__socket.recv(4))[0]
         reply = HyperionReply()
         reply.ParseFromString(self.__socket.recv(size))
-        
+
         # check the reply
         #print "Reply received:\n%s" % (reply)
         if not reply.success:
             raise RuntimeError("Hyperion server error: " + reply.error)
-        
